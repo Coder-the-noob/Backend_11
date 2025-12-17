@@ -256,16 +256,6 @@ async function run() {
       });
     });
 
-    app.post("/fundings", verifyJWT, async (req, res) => {
-      const funding = {
-        ...req.body,
-        date: new Date(),
-      };
-
-      const result = await database.collection("fundings").insertOne(funding);
-      res.send(result);
-    });
-
     app.get("/fundings", verifyJWT, async (req, res) => {
       const result = await database
         .collection("fundings")
@@ -317,13 +307,32 @@ async function run() {
           {
             $group: {
               _id: null,
-              totalAmount: { $sum: "$amount" },
+              total: { $sum: "$amount" },
             },
           },
         ])
         .toArray();
 
-      res.send({ total: result[0]?.totalAmount || 0 });
+      const total = result[0]?.total || 0;
+      res.send({ total });
+    });
+
+    app.get("/admin/chart-stats", verifyJWT, async (req, res) => {
+      const totalUsers = await usersCollection.countDocuments();
+      const totalRequests = await donationRequestsCollection.countDocuments();
+      const pending = await donationRequestsCollection.countDocuments({
+        status: "pending",
+      });
+      const completed = await donationRequestsCollection.countDocuments({
+        status: "done",
+      });
+
+      res.send([
+        { name: "Users", value: totalUsers },
+        { name: "Requests", value: totalRequests },
+        { name: "Pending", value: pending },
+        { name: "Completed", value: completed },
+      ]);
     });
   } finally {
     // Ensures that the client will close when you finish/error
