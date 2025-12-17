@@ -48,6 +48,7 @@ async function run() {
     const database = client.db("bloodDonation");
     const usersCollection = database.collection("users");
     const donationRequestsCollection = database.collection("donationRequests");
+    const fundingsCollection = database.collection("fundings");
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -282,6 +283,47 @@ async function run() {
         .toArray();
 
       res.send({ total: result[0]?.total || 0 });
+    });
+
+    app.post("/fundings", verifyJWT, async (req, res) => {
+      const funding = {
+        ...req.body,
+        createdAt: new Date(),
+      };
+
+      const result = await fundingsCollection.insertOne(funding);
+      res.send(result);
+    });
+
+    app.get("/fundings", verifyJWT, async (req, res) => {
+      const email = req.query.email;
+
+      let query = {};
+      if (email) {
+        query.email = email; // donor funding only
+      }
+
+      const result = await fundingsCollection
+        .find(query)
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+    app.get("/fundings/total", verifyJWT, async (req, res) => {
+      const result = await fundingsCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              totalAmount: { $sum: "$amount" },
+            },
+          },
+        ])
+        .toArray();
+
+      res.send({ total: result[0]?.totalAmount || 0 });
     });
   } finally {
     // Ensures that the client will close when you finish/error
