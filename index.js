@@ -290,7 +290,7 @@ async function run() {
 
       let query = {};
       if (email) {
-        query.email = email; // donor funding only
+        query.email = email; 
       }
 
       const result = await fundingsCollection
@@ -340,7 +340,6 @@ async function run() {
   try {
     const email = req.decoded.email;
 
-    // find db user
     const dbUser = await usersCollection.findOne({ email });
 
     let donationQuery = {};
@@ -388,11 +387,6 @@ async function run() {
     res.status(500).send({ message: "Failed to load dashboard stats" });
   }
 });
-
-
-
-
-
 
   } finally {
     // Ensures that the client will close when you finish/error
