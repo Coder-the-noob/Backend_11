@@ -8,7 +8,7 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.nfj0fog.mongodb.net/?appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -46,6 +46,7 @@ async function run() {
 
     const database = client.db("bloodDonation");
     const usersCollection = database.collection("users");
+    const donationRequestsCollection = database.collection("donationRequests");
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -74,10 +75,130 @@ async function run() {
       res.send({ token });
     });
 
+    // role change api for admin use
+    app.get("/users", verifyJWT, async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.patch("/users/role/:id", verifyJWT, async (req, res) => {
+      const { role } = req.body;
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { role } }
+      );
+
+      res.send(result);
+    });
+
     app.get("/users/me", verifyJWT, async (req, res) => {
       const email = req.decoded.email;
       const user = await usersCollection.findOne({ email });
       res.send(user);
+    });
+
+    app.get("/donors", async (req, res) => {
+      const { bloodGroup, district, upazila } = req.query;
+
+      let query = { role: "donor", status: "active" };
+
+      if (bloodGroup) query.bloodGroup = bloodGroup;
+      if (district) query.district = district;
+      if (upazila) query.upazila = upazila;
+
+      const donors = await usersCollection.find(query).toArray();
+      res.send(donors);
+    });
+
+    app.post("/donation-requests", verifyJWT, async (req, res) => {
+      const email = req.decoded.email;
+
+      const user = await usersCollection.findOne({ email });
+      if (user?.status === "blocked") {
+        return res.status(403).send({ message: "Blocked user" });
+      }
+
+      const donationRequest = {
+        ...req.body,
+        requesterEmail: email,
+        status: "pending",
+        donor: {
+          name: null,
+          email: null,
+        },
+        createdAt: new Date(),
+      };
+
+      const result = await donationRequestsCollection.insertOne(
+        donationRequest
+      );
+      res.send(result);
+    });
+
+    app.get("/donation-requests", verifyJWT, async (req, res) => {
+      const { email, status, limit } = req.query;
+
+      let query = {};
+      if (email) query.requesterEmail = email;
+      if (status) query.status = status;
+
+      let cursor = donationRequestsCollection
+        .find(query)
+        .sort({ createdAt: -1 });
+
+      if (limit) {
+        cursor = cursor.limit(parseInt(limit));
+      }
+
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.get("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const result = await donationRequestsCollection.findOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+
+    app.patch("/donation-requests/status/:id", verifyJWT, async (req, res) => {
+      const { status, donor } = req.body;
+
+      const allowed = ["inprogress", "done", "canceled"];
+      if (!allowed.includes(status)) {
+        return res.status(400).send({ message: "Invalid status" });
+      }
+
+      const updateDoc = {
+        status,
+      };
+
+      if (donor) {
+        updateDoc.donor = donor;
+      }
+
+      const result = await donationRequestsCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: updateDoc }
+      );
+
+      res.send(result);
+    });
+
+    app.patch("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const result = await donationRequestsCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: req.body }
+      );
+
+      res.send(result);
+    });
+    app.delete("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const result = await donationRequestsCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
     });
   } finally {
     // Ensures that the client will close when you finish/error
