@@ -334,6 +334,66 @@ async function run() {
         { name: "Completed", value: completed },
       ]);
     });
+
+    // stats
+    app.get("/dashboard/stats", verifyJWT, async (req, res) => {
+  try {
+    const email = req.decoded.email;
+
+    // find db user
+    const dbUser = await usersCollection.findOne({ email });
+
+    let donationQuery = {};
+    let fundingQuery = {};
+
+    if (dbUser?.role === "donor") {
+      donationQuery.requesterEmail = email;
+      fundingQuery.email = email;
+    }
+
+    const totalRequests = await donationRequestsCollection.countDocuments(
+      donationQuery
+    );
+
+    const pending = await donationRequestsCollection.countDocuments({
+      ...donationQuery,
+      status: "pending",
+    });
+
+    const completed = await donationRequestsCollection.countDocuments({
+      ...donationQuery,
+      status: "done",
+    });
+
+    let totalFunds = 0;
+
+    if (dbUser?.role === "admin" || dbUser?.role === "volunteer") {
+      const fundAgg = await fundingsCollection
+        .aggregate([
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ])
+        .toArray();
+
+      totalFunds = fundAgg[0]?.total || 0;
+    }
+
+    res.send({
+      totalRequests,
+      pending,
+      completed,
+      totalFunds,
+    });
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    res.status(500).send({ message: "Failed to load dashboard stats" });
+  }
+});
+
+
+
+
+
+
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
