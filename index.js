@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -90,6 +91,45 @@ async function run() {
       );
 
       res.send(result);
+    });
+
+    app.patch("/users/status/:id", verifyJWT, async (req, res) => {
+      const { status } = req.body;
+
+      console.log("STATUS UPDATE:", req.params.id, status);
+
+      if (!["active", "blocked"].includes(status)) {
+        return res.status(400).send({ message: "Invalid status" });
+      }
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { status } }
+      );
+
+      res.send(result);
+    });
+
+    app.get("/admin/stats", verifyJWT, async (req, res) => {
+      const email = req.decoded.email;
+
+      // check admin
+      const admin = await usersCollection.findOne({ email });
+      if (admin?.role !== "admin") {
+        return res.status(403).send({ message: "Forbidden" });
+      }
+
+      const totalUsers = await usersCollection.countDocuments();
+      const totalRequests = await donationRequestsCollection.countDocuments();
+
+      // funding bonus (for now 0)
+      const totalFunding = 0;
+
+      res.send({
+        totalUsers,
+        totalRequests,
+        totalFunding,
+      });
     });
 
     app.get("/users/me", verifyJWT, async (req, res) => {
