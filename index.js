@@ -240,6 +240,49 @@ async function run() {
       });
       res.send(result);
     });
+
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { amount } = req.body;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount * 100, // taka → paisa
+        currency: "bdt",
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post("/fundings", verifyJWT, async (req, res) => {
+      const funding = {
+        ...req.body,
+        date: new Date(),
+      };
+
+      const result = await database.collection("fundings").insertOne(funding);
+      res.send(result);
+    });
+
+    app.get("/fundings", verifyJWT, async (req, res) => {
+      const result = await database
+        .collection("fundings")
+        .find()
+        .sort({ date: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+    app.get("/fundings/total", verifyJWT, async (req, res) => {
+      const result = await database
+        .collection("fundings")
+        .aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }])
+        .toArray();
+
+      res.send({ total: result[0]?.total || 0 });
+    });
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
